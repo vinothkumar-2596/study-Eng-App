@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=4, minimum-scale=1, user-scalable=yes, viewport-fit=cover" />
+<title>study-Eng reader</title>
+<style>
+  :root {
+    --paper: #fffefb;
+    --line: #dcded7;
+    --ink: #1c2926;
+    --scale-factor: 1;
+  }
+  * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    overscroll-behavior: none;
+  }
+  #stage {
+    min-height: 100vh;
+    padding: 10px 8px 40px;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+  }
+  #shell {
+    position: relative;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    box-shadow: 0 8px 28px rgba(28, 41, 38, 0.09);
+    line-height: 0;
+  }
+  #canvas { display: block; }
+
+  /* pdf.js text layer — transparent glyph boxes stacked over the canvas.
+     Selection has to stay enabled: the long-press sentence flow relies on it. */
+  #textLayer {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    opacity: 1;
+    line-height: 1;
+    text-align: initial;
+    -webkit-user-select: text;
+    user-select: text;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+  }
+  #textLayer span,
+  #textLayer br {
+    color: transparent;
+    position: absolute;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+    margin: 0;
+  }
+  #textLayer span.markedContent { top: 0; height: 0; }
+  #textLayer ::selection { background: rgba(35, 89, 77, 0.28); }
+  #textLayer .endOfContent {
+    display: block;
+    position: absolute;
+    inset: 100% 0 0;
+    z-index: -1;
+    cursor: default;
+    user-select: none;
+  }
+
+  /* Momentary highlight so a tapped word is visibly acknowledged. */
+  #flash {
+    position: absolute;
+    border-radius: 3px;
+    background: rgba(35, 89, 77, 0.2);
+    box-shadow: 0 0 0 2px rgba(35, 89, 77, 0.28);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 200ms ease-out;
+  }
+  #flash.on { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="shell">
+    <canvas id="canvas"></canvas>
+    <div id="textLayer"></div>
+    <div id="flash"></div>
+  </div>
+</div>
+
+<script src="pdf.lib.js"></script>
+<!--
+  WKWebView refuses to construct a Web Worker from a file:// origin. Loading the
+  worker bundle here publishes globalThis.pdfjsWorker, which pdf.js checks first —
+  so it goes straight to main-thread rendering instead of attempting a real worker,
+  failing with a SecurityError, and then fetching this same file anyway.
+-->
+<script src="pdf.worker.js"></script>
+<script>
+(function () {
+  'use strict'
+
+  var RN = window.ReactNativeWebView
+  function send(payload) {
+    if (RN) RN.postMessage(JSON.stringify(payload))
+  }
+
+  window.onerror = function (message) {
+    send({ type: 'error', message: String(message) })
+  }
+
+  if (!window.pdfjsLib) {
+    send({ type: 'error', message: 'The PDF engine failed to load.' })
+    return
+  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.js'
+
+  var stage = document.getElementById('stage')
+  var shell = document.getElementById('shell')
+  var canvas = document.getElementById('canvas')
+  var textLayer = document.getElementById('textLayer')
+  var flash = document.getElementById('flash')
+  var context = canvas.getContext('2d', { alpha: false })
+
+  var doc = null
+  var pageNumber = 1
+  var zoom = 1
+  var fitMode = 'width'
+  var pageText = ''
+  var renderToken = 0
+  var textTask = null
+  var flashTimer = null
+
+  /* ---------------------------------------------------------------
+     Text helpers — ported verbatim from the web app's PDFReader.tsx
+     so word/sentence context behaves identically on both platforms.
+     --------------------------------------------------------------- */
+
+  function buildPageText(items) {
+    var out = ''
+    for (var i = 0; i < items.length; i += 1) {
+      var item = items[i]
+      if (!item || typeof item.str !== 'string') continue
+      out += item.str + (item.hasEOL ? '\n' : ' ')
+    }
+    return out.replace(/\s+/g, ' ').trim()
+  }
+
+  function contextFor(text, phrase) {
+    if (!text) return phrase
+    var normalized = phrase.trim()
+    var index = text.toLowerCase().indexOf(normalized.toLowerCase())
+    if (index < 0) return text.slice(0, 500)
+    var before = text.slice(0, index)
+    var after = text.slice(index + normalized.length)
+    var leftBoundary = Math.max(
+      before.lastIndexOf('.'),
+      before.lastIndexOf('!'),
+      before.lastIndexOf('?'),
+      index - 220
+    )
+    var stops = [after.indexOf('.'), after.indexOf('!'), after.indexOf('?')].filter(function (value) {
+      return value >= 0
+    })
+    var rightStop = stops.length ? Math.min.apply(null, stops) + 1 : Math.min(after.length, 220)
+    return text.slice(Math.max(0, leftBoundary + 1), index + normalized.length + rightStop).trim().slice(0, 700)
+  }
+
+  function caretRangeAtPoint(x, y) {
+    if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y)
+    if (document.caretPositionFromPoint) {
+      var position = document.caretPositionFromPoint(x, y)
+      if (!position) return null
+      var range = document.createRange()
+      range.setStart(position.offsetNode, position.offset)
+      range.collapse(true)
+      return range
+    }
+    return null
+  }
+
+  var WORD_CHARACTER = /[A-Za-zÀ-ÖØ-öø-ÿ'’\-]/
+
+  function wordAtPoint(x, y) {
+    var caret = caretRangeAtPoint(x, y)
+    var node = caret && caret.startContainer
+    if (!caret || !node || node.nodeType !== 3 || !textLayer.contains(node)) return null
+    var value = node.textContent || ''
+    var offset = Math.min(caret.startOffset, Math.max(0, value.length - 1))
+    if (!WORD_CHARACTER.test(value[offset] || '') && offset > 0) offset -= 1
+    if (!WORD_CHARACTER.test(value[offset] || '')) return null
+    var start = offset
+    var end = offset + 1
+    while (start > 0 && WORD_CHARACTER.test(value[start - 1])) start -= 1
+    while (end < value.length && WORD_CHARACTER.test(value[end])) end += 1
+    var range = document.createRange()
+    range.setStart(node, start)
+    range.setEnd(node, end)
+    var text = range.toString().replace(/^[’'\-]+|[’'\-]+$/g, '')
+    if (!text || text.length > 60) return null
+    // The caret API snaps to the nearest glyph, so a tap in the margin would
+    // otherwise report a word the reader never touched.
+    var rect = range.getBoundingClientRect()
+    var slop = 6
+    if (x < rect.left - slop || x > rect.right + slop || y < rect.top - slop || y > rect.bottom + slop) {
+      return null
+    }
+    return { text: text, rect: rect }
+  }
+
+  /* --------------------------- rendering --------------------------- */
+
+  function targetWidth(page) {
+    var base = page.getViewport({ scale: 1 })
+    var available = Math.max(240, stage.clientWidth - 16)
+    if (fitMode === 'page') {
+      var availableHeight = Math.max(320, window.innerHeight - 50)
+      var ratio = base.height / base.width
+      return Math.min(available, availableHeight / ratio) * zoom
+    }
+    return available * zoom
+  }
+
+  function renderPage() {
+    if (!doc) return
+    var token = ++renderToken
+    hideFlash()
+
+    doc.getPage(pageNumber).then(function (page) {
+      if (token !== renderToken) return
+
+      var base = page.getViewport({ scale: 1 })
+      var scale = targetWidth(page) / base.width
+      var viewport = page.getViewport({ scale: scale })
+      var outputScale = Math.min(window.devicePixelRatio || 1, 3)
+
+      canvas.width = Math.floor(viewport.width * outputScale)
+      canvas.height = Math.floor(viewport.height * outputScale)
+      canvas.style.width = Math.floor(viewport.width) + 'px'
+      canvas.style.height = Math.floor(viewport.height) + 'px'
+      shell.style.width = Math.floor(viewport.width) + 'px'
+      shell.style.height = Math.floor(viewport.height) + 'px'
+
+      textLayer.style.width = Math.floor(viewport.width) + 'px'
+      textLayer.style.height = Math.floor(viewport.height) + 'px'
+      textLayer.style.setProperty('--scale-factor', String(scale))
+
+      if (textTask && textTask.cancel) textTask.cancel()
+      textLayer.textContent = ''
+
+      var renderTask = page.render({
+        canvasContext: context,
+        viewport: viewport,
+        transform: outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null,
+      })
+
+      return renderTask.promise
+        .then(function () {
+          return page.getTextContent()
+        })
+        .then(function (content) {
+          if (token !== renderToken) return null
+          pageText = buildPageText(content.items)
+          textTask = pdfjsLib.renderTextLayer({
+            textContent: content,
+            container: textLayer,
+            viewport: viewport,
+            textDivs: [],
+          })
+          return textTask.promise.then(function () {
+            return content
+          })
+        })
+        .then(function (content) {
+          if (token !== renderToken || !content) return
+          // pdf.js needs a trailing element so a drag-select can reach past the last glyph.
+          var end = document.createElement('div')
+          end.className = 'endOfContent'
+          textLayer.appendChild(end)
+          window.scrollTo(0, 0)
+          send({
+            type: 'pageInfo',
+            page: pageNumber,
+            pages: doc.numPages,
+            hasText: pageText.length > 0,
+          })
+        })
+    }).catch(function (error) {
+      if (token !== renderToken) return
+      send({ type: 'error', message: readableError(error) })
+    })
+  }
+
+  function readableError(error) {
+    var name = error && error.name
+    if (name === 'PasswordException') return 'This PDF is password-protected.'
+    if (name === 'InvalidPDFException') return 'This file is not a readable PDF.'
+    return (error && error.message) || 'This PDF could not be opened.'
+  }
+
+  function loadDocument(source) {
+    if (doc) {
+      try { doc.destroy() } catch (ignored) {}
+      doc = null
+    }
+    pageText = ''
+    pdfjsLib.getDocument(source).promise.then(function (loaded) {
+      doc = loaded
+      pageNumber = 1
+      renderPage()
+    }).catch(function (error) {
+      send({ type: 'loadFailed', message: readableError(error) })
+    })
+  }
+
+  /* --------------------------- interaction --------------------------- */
+
+  function showFlash(rect) {
+    var shellRect = shell.getBoundingClientRect()
+    flash.style.left = rect.left - shellRect.left - 2 + 'px'
+    flash.style.top = rect.top - shellRect.top - 1 + 'px'
+    flash.style.width = rect.width + 4 + 'px'
+    flash.style.height = rect.height + 2 + 'px'
+    flash.classList.add('on')
+    if (flashTimer) clearTimeout(flashTimer)
+    flashTimer = setTimeout(hideFlash, 900)
+  }
+
+  function hideFlash() {
+    flash.classList.remove('on')
+  }
+
+  function rectPayload(rect) {
+    return {
+      x: rect.left,
+      y: rect.top,
+      width: rect.width,
+      height: rect.height,
+      bottom: rect.bottom,
+    }
+  }
+
+  function reportWord(x, y) {
+    var found = wordAtPoint(x, y)
+    if (!found) return false
+    showFlash(found.rect)
+    send({
+      type: 'select',
+      selection: {
+        type: 'word',
+        text: found.text,
+        context: contextFor(pageText, found.text),
+        rect: rectPayload(found.rect),
+      },
+    })
+    return true
+  }
+
+  function currentSentence() {
+    var selection = window.getSelection()
+    if (!selection || selection.isCollapsed || !selection.rangeCount) return null
+    if (!selection.anchorNode || !textLayer.contains(selection.anchorNode)) return null
+    var text = String(selection).replace(/\s+/g, ' ').trim()
+    if (!text || text.split(/\s+/).length < 2) return null
+    return { text: text, rect: selection.getRangeAt(0).getBoundingClientRect() }
+  }
+
+  function reportSentence() {
+    var found = currentSentence()
+    if (!found) return false
+    if (found.text.length > 700) {
+      send({ type: 'tooLong' })
+      return true
+    }
+    send({
+      type: 'select',
+      selection: {
+        type: 'sentence',
+        text: found.text,
+        context: contextFor(pageText, found.text),
+        rect: rectPayload(found.rect),
+      },
+    })
+    return true
+  }
+
+  var touchStart = null
+  var moved = false
+
+  document.addEventListener('touchstart', function (event) {
+    if (event.touches.length !== 1) {
+      touchStart = null
+      return
+    }
+    var touch = event.touches[0]
+    touchStart = { x: touch.clientX, y: touch.clientY, at: Date.now() }
+    moved = false
+  }, { passive: true })
+
+  document.addEventListener('touchmove', function (event) {
+    if (!touchStart || event.touches.length !== 1) {
+      moved = true
+      return
+    }
+    var touch = event.touches[0]
+    if (Math.abs(touch.clientX - touchStart.x) > 10 || Math.abs(touch.clientY - touchStart.y) > 10) {
+      moved = true
+    }
+  }, { passive: true })
+
+  document.addEventListener('touchend', function () {
+    var start = touchStart
+    touchStart = null
+    // Let iOS settle its own selection handles before reading the selection.
+    setTimeout(function () {
+      if (reportSentence()) return
+      if (!start || moved) return
+      reportWord(start.x, start.y)
+    }, 60)
+  }, { passive: true })
+
+  // Desktop / simulator convenience — a plain click behaves like a tap.
+  document.addEventListener('click', function (event) {
+    if (touchStart || currentSentence()) return
+    reportWord(event.clientX, event.clientY)
+  })
+
+  /* --------------------------- native bridge --------------------------- */
+
+  var chunks = []
+
+  window.__reader = {
+    open: function (url) {
+      loadDocument(url)
+    },
+    resetChunks: function () {
+      chunks = []
+    },
+    pushChunk: function (part) {
+      chunks.push(part)
+    },
+    openChunks: function () {
+      var base64 = chunks.join('')
+      chunks = []
+      var binary = atob(base64)
+      var bytes = new Uint8Array(binary.length)
+      for (var i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+      loadDocument({ data: bytes })
+    },
+    goToPage: function (next) {
+      if (!doc) return
+      var clamped = Math.max(1, Math.min(next, doc.numPages))
+      if (clamped === pageNumber) return
+      pageNumber = clamped
+      clearSelection()
+      renderPage()
+    },
+    setZoom: function (next) {
+      zoom = next
+      renderPage()
+    },
+    setFit: function (mode) {
+      fitMode = mode
+      zoom = 1
+      renderPage()
+    },
+    clearSelection: function () {
+      clearSelection()
+    },
+  }
+
+  function clearSelection() {
+    hideFlash()
+    var selection = window.getSelection()
+    if (selection) selection.removeAllRanges()
+  }
+
+  var resizeTimer = null
+  window.addEventListener('resize', function () {
+    if (resizeTimer) clearTimeout(resizeTimer)
+    resizeTimer = setTimeout(renderPage, 180)
+  })
+
+  send({ type: 'ready' })
+})()
+</script>
+</body>
+</html>

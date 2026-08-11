@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "study-Eng",
+    "slug": "study-eng-app",
+    "version": "1.0.0",
+    "scheme": "studyeng",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#f4f1ea",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "in.brandviora.studyeng",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "study-Eng connects to Ollama running on your own computer so word meanings work without a paid service."
+      }
+    },
+    "android": {
+      "package": "in.brandviora.studyeng",
+      "adaptiveIcon": {
+        "backgroundColor": "#f4f1ea",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}
