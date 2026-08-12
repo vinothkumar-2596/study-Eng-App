@@ -330,7 +330,11 @@ async function analyzeWithApi(request: LearningRequest, signal?: AbortSignal): P
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { message?: string } | null
     if (response.status === 503) {
-      throw new Error('This word is not in the built-in dictionary. Add a local Ollama address in Settings for full coverage.')
+      throw new Error(
+        request.type === 'word'
+          ? 'This word is not in the built-in dictionary. Add a local Ollama address in Settings for full coverage.'
+          : 'Sentence translation and grammar need a local Ollama model. Add its address in Settings and try again.',
+      )
     }
     throw new Error(body?.message ?? 'Unable to analyze this right now. Please try again.')
   }

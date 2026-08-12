@@ -4,7 +4,7 @@ import * as Speech from 'expo-speech'
 import { useEffect, useState } from 'react'
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { BottomSheet } from './BottomSheet'
-import { Card, Chip, Label, Notice, PrimaryButton } from './ui'
+import { Card, Chip, Label, Notice, PrimaryButton, SecondaryButton } from './ui'
 import { color, radius, space, type } from '../theme/tokens'
 import type { LearningResult, ReaderSelection, SentenceLearning, WordLearning } from '../types/learning'
 
@@ -13,6 +13,8 @@ type Props = {
   result: LearningResult | null
   loading: boolean
   error: string
+  onRetry: () => void
+  onOpenSettings: () => void
   onClose: () => void
   onSaveWord: (word: WordLearning) => void
   onSaveSentence: (sentence: SentenceLearning) => void
@@ -23,6 +25,8 @@ export function LearningSheet({
   result,
   loading,
   error,
+  onRetry,
+  onOpenSettings,
   onClose,
   onSaveWord,
   onSaveSentence,
@@ -58,6 +62,7 @@ export function LearningSheet({
     <BottomSheet
       visible={Boolean(selection)}
       onClose={onClose}
+      compact={Boolean(loading || error)}
       header={
         <View style={styles.header}>
           <Label>{isSentence ? 'Sentence explainer' : 'Word meaning'}</Label>
@@ -102,6 +107,10 @@ export function LearningSheet({
           <Card tone="alert" style={styles.errorCard}>
             <Text style={[type.heading, styles.errorTitle]}>Couldn’t analyze this</Text>
             <Text style={type.caption}>{error}</Text>
+            <View style={styles.errorActions}>
+              <SecondaryButton label="Try again" icon="refresh-cw" onPress={onRetry} style={styles.errorAction} />
+              <SecondaryButton label="Open Settings" icon="settings" onPress={onOpenSettings} style={styles.errorAction} />
+            </View>
           </Card>
         ) : null}
 
@@ -299,6 +308,8 @@ const styles = StyleSheet.create({
 
   loading: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xl },
   errorCard: { gap: space.xs },
+  errorActions: { flexDirection: 'row', gap: space.sm, marginTop: space.md },
+  errorAction: { flex: 1, paddingHorizontal: space.sm },
   errorTitle: { marginBottom: 2 },
 
   wordTitleRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, flexWrap: 'wrap' },

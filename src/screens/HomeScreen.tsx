@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
+import * as Haptics from 'expo-haptics'
 import { useCallback, useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { PrimaryButton } from '../components/ui'
 import { bookExists, PdfSourceError, pickPdf } from '../lib/pdfSource'
@@ -13,7 +14,7 @@ import type { RecentBook } from '../types/learning'
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>
 
-const COVER_COLORS = ['#2a312b', '#a74f35', '#6c7565', '#d5a84b', '#405d62']
+const COVER_COLORS = ['#56675b', '#8b7463', '#6f817b', '#9b8e73', '#716b63']
 
 function greeting() {
   const hour = new Date().getHours()
@@ -36,6 +37,7 @@ export function HomeScreen({ navigation }: Props) {
   const [wordCount, setWordCount] = useState(0)
   const [sentenceCount, setSentenceCount] = useState(0)
   const [picking, setPicking] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   const refresh = useCallback(() => {
     let active = true
@@ -56,12 +58,30 @@ export function HomeScreen({ navigation }: Props) {
   const currentBook = books[0]
   const shelf = books.slice(currentBook ? 1 : 0)
 
+  async function pullToRefresh() {
+    setRefreshing(true)
+    try {
+      const [recent, words, sentences] = await Promise.all([
+        getRecentBooks(),
+        getSavedWords(),
+        getSavedSentences(),
+      ])
+      setBooks(recent)
+      setWordCount(words.length)
+      setSentenceCount(sentences.length)
+      void Haptics.selectionAsync()
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   async function choosePdf() {
     setPicking(true)
     try {
       const book = await pickPdf()
       if (!book) return
       setBooks(await rememberBook(book))
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
       navigation.navigate('Reader', { book })
     } catch (error) {
       Alert.alert(
@@ -75,6 +95,7 @@ export function HomeScreen({ navigation }: Props) {
 
   async function openBook(book: RecentBook) {
     if (await bookExists(book)) {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)
       navigation.navigate('Reader', { book })
       return
     }
@@ -83,6 +104,7 @@ export function HomeScreen({ navigation }: Props) {
   }
 
   function removeBook(book: RecentBook) {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
     Alert.alert('Remove this book?', `“${book.name}” will be removed from your shelf.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => void forgetBook(book.id).then(setBooks) },
@@ -91,12 +113,24 @@ export function HomeScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void pullToRefresh()}
+            tintColor={color.accent}
+            colors={[color.accent]}
+          />
+        }
+      >
         <View style={styles.topBar}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Search saved learning"
             onPress={() => navigation.navigate('Library')}
+            onPressIn={() => void Haptics.selectionAsync()}
             style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}
           >
             <Feather name="search" size={18} color={color.ink} />
@@ -110,6 +144,7 @@ export function HomeScreen({ navigation }: Props) {
             accessibilityRole="button"
             accessibilityLabel="Settings"
             onPress={() => navigation.navigate('Settings')}
+            onPressIn={() => void Haptics.selectionAsync()}
             style={({ pressed }) => [styles.topAction, pressed && styles.pressed]}
           >
             <Feather name="more-horizontal" size={20} color={color.ink} />
@@ -135,6 +170,7 @@ export function HomeScreen({ navigation }: Props) {
               accessibilityLabel={`Continue ${currentBook.name}`}
               onPress={() => void openBook(currentBook)}
               onLongPress={() => removeBook(currentBook)}
+              delayLongPress={380}
               style={({ pressed }) => [styles.featureCard, pressed && styles.cardPressed]}
             >
               <BookCover book={currentBook} index={0} large />
@@ -176,6 +212,7 @@ export function HomeScreen({ navigation }: Props) {
                   accessibilityRole="button"
                   onPress={() => void openBook(book)}
                   onLongPress={() => removeBook(book)}
+                  delayLongPress={380}
                   style={({ pressed }) => [styles.shelfBook, pressed && styles.pressed]}
                 >
                   <BookCover book={book} index={index + 1} />
@@ -191,6 +228,7 @@ export function HomeScreen({ navigation }: Props) {
           <Pressable
             accessibilityRole="button"
             onPress={() => navigation.navigate('Library')}
+            onPressIn={() => void Haptics.selectionAsync()}
             style={({ pressed }) => [styles.learningCard, pressed && styles.cardPressed]}
           >
             <View style={styles.learningIcon}><Feather name="bookmark" size={18} color={color.accent} /></View>

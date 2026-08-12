@@ -1,4 +1,6 @@
 import { Feather } from '@expo/vector-icons'
+import * as Haptics from 'expo-haptics'
+import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { IconButton } from './ui'
 import { color, radius, space, type } from '../theme/tokens'
@@ -34,7 +36,9 @@ export function ReaderToolbar({
   onZoomChange,
   onFitModeChange,
 }: Props) {
+  const [controlsOpen, setControlsOpen] = useState(true)
   const round = (value: number) => Math.round(value * 100) / 100
+  const progress = pages ? Math.min(1, Math.max(0, page / pages)) : 0
 
   return (
     <View style={styles.root}>
@@ -43,19 +47,27 @@ export function ReaderToolbar({
         <Text style={[type.heading, styles.title]} numberOfLines={1}>
           {title}
         </Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open my words"
-          onPress={onOpenLibrary}
-          hitSlop={6}
-          style={({ pressed }) => [styles.libraryButton, pressed && styles.pressed]}
-        >
-          <Feather name="bookmark" size={15} color={color.ink} />
-          <Text style={styles.libraryCount}>{savedCount}</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open my words"
+            onPress={onOpenLibrary}
+            onPressIn={() => void Haptics.selectionAsync()}
+            hitSlop={6}
+            style={({ pressed }) => [styles.libraryButton, pressed && styles.pressed]}
+          >
+            <Feather name="bookmark" size={15} color={color.ink} />
+            <Text style={styles.libraryCount}>{savedCount}</Text>
+          </Pressable>
+          <IconButton
+            icon={controlsOpen ? 'chevron-up' : 'sliders'}
+            accessibilityLabel={controlsOpen ? 'Hide reader controls' : 'Show reader controls'}
+            onPress={() => setControlsOpen((open) => !open)}
+          />
+        </View>
       </View>
 
-      <View style={[styles.row, styles.controls]}>
+      {controlsOpen ? <View style={[styles.row, styles.controls]}>
         <View style={styles.pager}>
           <IconButton
             icon="chevron-left"
@@ -88,6 +100,7 @@ export function ReaderToolbar({
             accessibilityRole="button"
             accessibilityLabel={fitMode === 'width' ? 'Fit whole page' : 'Fit page width'}
             onPress={() => onFitModeChange(fitMode === 'width' ? 'page' : 'width')}
+            onPressIn={() => void Haptics.selectionAsync()}
             style={({ pressed }) => [styles.fitButton, pressed && styles.pressed]}
           >
             <Feather
@@ -104,6 +117,9 @@ export function ReaderToolbar({
             onPress={() => onZoomChange(round(Math.min(MAX_ZOOM, zoom + STEP)))}
           />
         </View>
+      </View> : null}
+      <View style={styles.progressTrack} accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: pages || 1, now: page }}>
+        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
       </View>
     </View>
   )
@@ -120,6 +136,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   headerRow: { minHeight: 44 },
   title: { flex: 1, textAlign: 'center', fontSize: 15 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: space.xs },
 
   controls: {
     minHeight: 54,
@@ -158,4 +175,6 @@ const styles = StyleSheet.create({
     backgroundColor: color.surfaceSunken,
   },
   fitLabel: { ...type.caption, fontWeight: '600', color: color.ink },
+  progressTrack: { height: 3, borderRadius: 2, backgroundColor: color.surfaceSunken, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 2, backgroundColor: color.accent },
 })

@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Animated,
@@ -20,11 +21,13 @@ export function BottomSheet({
   visible,
   onClose,
   header,
+  compact = false,
   children,
 }: {
   visible: boolean
   onClose: () => void
   header?: ReactNode
+  compact?: boolean
   children: ReactNode
 }) {
   const insets = useSafeAreaInsets()
@@ -32,7 +35,8 @@ export function BottomSheet({
   const [windowHeight, setWindowHeight] = useState(() => Dimensions.get('window').height)
 
   const expandedHeight = Math.round(windowHeight * 0.88)
-  const restingOffset = Math.round(windowHeight * 0.88 - windowHeight * 0.52)
+  const restingHeight = windowHeight * (compact ? 0.42 : 0.56)
+  const restingOffset = Math.round(expandedHeight - restingHeight)
 
   const translateY = useRef(new Animated.Value(expandedHeight)).current
   const backdrop = useRef(new Animated.Value(0)).current
@@ -56,9 +60,12 @@ export function BottomSheet({
   const animateTo = useCallback(
     (value: number, then?: () => void) => {
       Animated.parallel([
-        Animated.timing(translateY, {
+        Animated.spring(translateY, {
           toValue: value,
-          duration: motion.base,
+          damping: 24,
+          stiffness: 260,
+          mass: 0.8,
+          overshootClamping: value >= expandedHeight,
           useNativeDriver: true,
         }),
         Animated.timing(backdrop, {
@@ -92,6 +99,7 @@ export function BottomSheet({
         onPanResponderGrant: () => {
           dragStart.current = offset.current
           translateY.stopAnimation()
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)
         },
         onPanResponderMove: (_event, gesture) => {
           const next = Math.min(expandedHeight, Math.max(0, dragStart.current + gesture.dy))
@@ -101,6 +109,7 @@ export function BottomSheet({
           const position = offset.current
           const flickingDown = gesture.vy > 0.8
           const flickingUp = gesture.vy < -0.8
+          void Haptics.selectionAsync()
 
           if (flickingDown && position > restingOffset - 40) {
             animateTo(expandedHeight, onClose)

@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons'
-import type { ReactNode } from 'react'
+import * as Haptics from 'expo-haptics'
+import { useRef, type ReactNode } from 'react'
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -13,6 +15,31 @@ import {
 import { color, radius, shadow, space, type } from '../theme/tokens'
 
 type IconName = keyof typeof Feather.glyphMap
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable)
+
+function usePressMotion(disabled?: boolean) {
+  const scale = useRef(new Animated.Value(1)).current
+
+  function animate(toValue: number) {
+    Animated.spring(scale, {
+      toValue,
+      damping: 18,
+      stiffness: 320,
+      mass: 0.55,
+      useNativeDriver: true,
+    }).start()
+  }
+
+  return {
+    animatedStyle: { transform: [{ scale }] },
+    onPressIn: () => {
+      if (disabled) return
+      animate(0.965)
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Soft)
+    },
+    onPressOut: () => animate(1),
+  }
+}
 
 export function Label({ children, style }: { children: ReactNode; style?: StyleProp<TextStyle> }) {
   return <Text style={[type.label, style]}>{String(children).toUpperCase()}</Text>
@@ -58,17 +85,20 @@ export function PrimaryButton({
   style?: StyleProp<ViewStyle>
 }) {
   const inactive = disabled || busy
+  const motion = usePressMotion(inactive)
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       disabled={inactive}
       onPress={onPress}
-      style={({ pressed }) => [
+      onPressIn={motion.onPressIn}
+      onPressOut={motion.onPressOut}
+      style={[
         styles.button,
         styles.buttonPrimary,
-        pressed && styles.buttonPrimaryPressed,
         inactive && styles.buttonDisabled,
         style,
+        motion.animatedStyle,
       ]}
     >
       {busy ? (
@@ -79,7 +109,7 @@ export function PrimaryButton({
           <Text style={styles.buttonPrimaryText}>{label}</Text>
         </>
       )}
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 
@@ -99,17 +129,20 @@ export function SecondaryButton({
   style?: StyleProp<ViewStyle>
 }) {
   const inactive = disabled || busy
+  const motion = usePressMotion(inactive)
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       disabled={inactive}
       onPress={onPress}
-      style={({ pressed }) => [
+      onPressIn={motion.onPressIn}
+      onPressOut={motion.onPressOut}
+      style={[
         styles.button,
         styles.buttonSecondary,
-        pressed && styles.buttonSecondaryPressed,
         inactive && styles.buttonDisabled,
         style,
+        motion.animatedStyle,
       ]}
     >
       {busy ? (
@@ -120,7 +153,7 @@ export function SecondaryButton({
           <Text style={styles.buttonSecondaryText}>{label}</Text>
         </>
       )}
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 
@@ -137,18 +170,21 @@ export function IconButton({
   disabled?: boolean
   tone?: 'neutral' | 'green'
 }) {
+  const motion = usePressMotion(disabled)
   return (
-    <Pressable
+    <AnimatedPressable
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
       disabled={disabled}
       onPress={onPress}
+      onPressIn={motion.onPressIn}
+      onPressOut={motion.onPressOut}
       hitSlop={8}
-      style={({ pressed }) => [
+      style={[
         styles.iconButton,
         tone === 'green' && styles.iconButtonGreen,
-        pressed && styles.iconButtonPressed,
         disabled && styles.iconButtonDisabled,
+        motion.animatedStyle,
       ]}
     >
       <Feather
@@ -156,7 +192,7 @@ export function IconButton({
         size={18}
         color={disabled ? color.faint : tone === 'green' ? color.paper : color.ink}
       />
-    </Pressable>
+    </AnimatedPressable>
   )
 }
 

@@ -6,6 +6,7 @@ export function useLearning(selection: ReaderSelection | null) {
   const [result, setResult] = useState<LearningResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
   const requestId = useRef(0)
 
   useEffect(() => {
@@ -37,7 +38,7 @@ export function useLearning(selection: ReaderSelection | null) {
       })
 
     return () => controller.abort()
-  }, [selection])
+  }, [attempt, selection])
 
-  return { result, loading, error }
+  return { result, loading, error, retry: () => setAttempt((current) => current + 1) }
 }

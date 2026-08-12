@@ -7,7 +7,7 @@
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#f4f1ea",
+    "backgroundColor": "#f5f2eb",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "in.brandviora.studyeng",
@@ -21,7 +21,7 @@
     "android": {
       "package": "in.brandviora.studyeng",
       "adaptiveIcon": {
-        "backgroundColor": "#f4f1ea",
+        "backgroundColor": "#f5f2eb",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"

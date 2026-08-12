@@ -30,6 +30,7 @@ export function ReaderScreen({ navigation, route }: Props) {
   const webRef = useRef<WebView>(null)
 
   const [htmlUri, setHtmlUri] = useState('')
+  const [readerDirectoryUri, setReaderDirectoryUri] = useState('')
   const [bootError, setBootError] = useState('')
   const [documentError, setDocumentError] = useState('')
   const [rendering, setRendering] = useState(true)
@@ -43,7 +44,7 @@ export function ReaderScreen({ navigation, route }: Props) {
   const [savedCount, setSavedCount] = useState(0)
 
   const [selection, setSelection] = useState<ReaderSelection | null>(null)
-  const { result, loading, error } = useLearning(selection)
+  const { result, loading, error, retry } = useLearning(selection)
 
   const openedRef = useRef(false)
   const initialPageRef = useRef(book.page || 1)
@@ -52,7 +53,9 @@ export function ReaderScreen({ navigation, route }: Props) {
     let active = true
     readerBundle()
       .then((bundle) => {
-        if (active) setHtmlUri(bundle.htmlUri)
+        if (!active) return
+        setHtmlUri(bundle.htmlUri)
+        setReaderDirectoryUri(bundle.directoryUri)
       })
       .catch((reason: unknown) => {
         if (active) setBootError(reason instanceof Error ? reason.message : 'The reader could not start.')
@@ -205,10 +208,11 @@ export function ReaderScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.stage}>
-        {htmlUri ? (
+        {htmlUri && readerDirectoryUri ? (
           <WebView
             ref={webRef}
             source={{ uri: htmlUri }}
+            allowingReadAccessToURL={readerDirectoryUri}
             originWhitelist={['*']}
             allowFileAccess
             allowFileAccessFromFileURLs
@@ -267,6 +271,11 @@ export function ReaderScreen({ navigation, route }: Props) {
         result={result}
         loading={loading}
         error={error}
+        onRetry={retry}
+        onOpenSettings={() => {
+          closeSelection()
+          navigation.navigate('Settings')
+        }}
         onClose={closeSelection}
         onSaveWord={handleSaveWord}
         onSaveSentence={handleSaveSentence}

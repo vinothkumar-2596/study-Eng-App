@@ -1,8 +1,9 @@
 import { Feather } from '@expo/vector-icons'
 import type { NativeStackScreenProps } from '@react-navigation/native-stack'
+import * as Haptics from 'expo-haptics'
 import * as Speech from 'expo-speech'
-import { useEffect, useMemo, useState } from 'react'
-import { Alert, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Alert, Animated, FlatList, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Chip, EmptyState, IconButton, Label } from '../components/ui'
 import {
@@ -132,6 +133,7 @@ export function LibraryScreen({ navigation }: Props) {
             onPress={() => setTab('sentences')}
           />
         </View>
+        <Text style={styles.swipeHint}>Swipe a card left for quick actions.</Text>
       </View>
 
       {tab === 'words' ? (
@@ -152,6 +154,7 @@ export function LibraryScreen({ navigation }: Props) {
             />
           }
           renderItem={({ item }) => (
+            <SwipeableCard label={`Remove ${item.word}`} onDelete={() => confirmRemoveWord(item)}>
             <View style={styles.card}>
               <View style={styles.cardTop}>
                 <Pressable
@@ -159,6 +162,7 @@ export function LibraryScreen({ navigation }: Props) {
                   accessibilityState={{ checked: item.learned }}
                   accessibilityLabel={item.learned ? 'Mark as not learned' : 'Mark as learned'}
                   onPress={() => {
+                    void Haptics.selectionAsync()
                     void toggleLearned(item.id).then(setWords)
                   }}
                   hitSlop={6}
@@ -180,11 +184,6 @@ export function LibraryScreen({ navigation }: Props) {
                     Speech.speak(item.word, { language: 'en-US', rate: 0.94 })
                   }}
                 />
-                <IconButton
-                  icon="trash-2"
-                  accessibilityLabel={`Remove ${item.word}`}
-                  onPress={() => confirmRemoveWord(item)}
-                />
               </View>
 
               <Text style={styles.tamil}>{item.tamilMeaning}</Text>
@@ -195,6 +194,7 @@ export function LibraryScreen({ navigation }: Props) {
                 </Text>
               ) : null}
             </View>
+            </SwipeableCard>
           )}
         />
       ) : (
@@ -215,24 +215,75 @@ export function LibraryScreen({ navigation }: Props) {
             />
           }
           renderItem={({ item }) => (
+            <SwipeableCard label="Remove this sentence" onDelete={() => confirmRemoveSentence(item)}>
             <View style={styles.card}>
               <View style={styles.cardTop}>
                 <Text style={[type.caption, styles.sentenceKicker]} numberOfLines={3}>
                   {item.sentence}
                 </Text>
-                <IconButton
-                  icon="trash-2"
-                  accessibilityLabel="Remove this sentence"
-                  onPress={() => confirmRemoveSentence(item)}
-                />
               </View>
               <Text style={styles.tamil}>{item.translation}</Text>
               {item.grammar.tense ? <Chip tone="green">{item.grammar.tense}</Chip> : null}
             </View>
+            </SwipeableCard>
           )}
         />
       )}
     </SafeAreaView>
+  )
+}
+
+function SwipeableCard({ children, label, onDelete }: { children: ReactNode; label: string; onDelete: () => void }) {
+  const translateX = useRef(new Animated.Value(0)).current
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.35,
+        onPanResponderMove: (_event, gesture) => {
+          translateX.setValue(Math.max(-88, Math.min(0, gesture.dx)))
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          const open = gesture.dx < -54 || gesture.vx < -0.65
+          Animated.spring(translateX, {
+            toValue: open ? -80 : 0,
+            damping: 22,
+            stiffness: 280,
+            mass: 0.7,
+            useNativeDriver: true,
+          }).start()
+          if (open) void Haptics.selectionAsync()
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(translateX, {
+            toValue: 0,
+            damping: 22,
+            stiffness: 280,
+            useNativeDriver: true,
+          }).start()
+        },
+      }),
+    [translateX],
+  )
+
+  return (
+    <View style={styles.swipeShell}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        onPress={() => {
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning)
+          onDelete()
+        }}
+        style={styles.swipeAction}
+      >
+        <Feather name="trash-2" size={19} color={color.paper} />
+        <Text style={styles.swipeActionText}>Remove</Text>
+      </Pressable>
+      <Animated.View {...pan.panHandlers} style={{ transform: [{ translateX }] }}>
+        {children}
+      </Animated.View>
+    </View>
   )
 }
 
@@ -241,7 +292,10 @@ function TabButton({ label, active, onPress }: { label: string; active: boolean;
     <Pressable
       accessibilityRole="tab"
       accessibilityState={{ selected: active }}
-      onPress={onPress}
+      onPress={() => {
+        void Haptics.selectionAsync()
+        onPress()
+      }}
       style={[styles.tab, active && styles.tabActive]}
     >
       <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
@@ -287,6 +341,7 @@ const styles = StyleSheet.create({
   tabActive: { backgroundColor: color.paper, borderWidth: 1, borderColor: color.line },
   tabLabel: { ...type.caption, fontWeight: '600', color: color.muted },
   tabLabelActive: { color: color.ink },
+  swipeHint: { ...type.caption, fontSize: 11.5, color: color.faint, textAlign: 'center', marginTop: -space.sm },
 
   list: { padding: space.lg, gap: space.md, paddingBottom: space.xxxl },
   card: {
@@ -297,6 +352,19 @@ const styles = StyleSheet.create({
     padding: space.lg,
     gap: space.sm,
   },
+  swipeShell: { borderRadius: radius.card, overflow: 'hidden', backgroundColor: color.warn },
+  swipeAction: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    backgroundColor: color.warn,
+  },
+  swipeActionText: { ...type.caption, fontSize: 11, fontWeight: '600', color: color.paper },
   cardTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   cardHead: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.sm, flexWrap: 'wrap' },
 

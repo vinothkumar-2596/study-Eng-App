@@ -6,41 +6,41 @@ import { Platform, TextStyle, ViewStyle } from 'react-native'
  * carried over from the web app), one warning colour, nothing else.
  */
 export const color = {
-  canvas: '#f4f1ea',
-  surface: '#ffffff',
-  surfaceSunken: '#ebe8e0',
+  canvas: '#f5f2eb',
+  surface: '#fffefb',
+  surfaceSunken: '#ece9e1',
 
-  ink: '#1d211c',
-  body: '#51584f',
-  muted: '#7d847a',
-  faint: '#a5aaa1',
+  ink: '#303630',
+  body: '#5d665e',
+  muted: '#818a81',
+  faint: '#a8afa7',
 
-  hairline: '#e8e4dc',
+  hairline: '#e6e2d9',
 
-  accent: '#23594d',
-  accentPressed: '#173f37',
-  accentSoft: '#e3efe9',
-  accentInk: '#1a453b',
-  highlight: '#d9e66a',
-  highlightSoft: '#f1f4cb',
-  charcoal: '#22251f',
+  accent: '#5b7564',
+  accentPressed: '#496052',
+  accentSoft: '#e4ece5',
+  accentInk: '#496052',
+  highlight: '#cbd8c5',
+  highlightSoft: '#edf1ea',
+  charcoal: '#3d473f',
 
-  warn: '#c0603c',
-  warnSoft: '#f9ece6',
+  warn: '#af705b',
+  warnSoft: '#f5e9e3',
 
   onAccent: '#ffffff',
 
   // Compatibility aliases keep existing screens stable while the design
   // system moves to semantic names.
-  paper: '#ffffff',
-  cream: '#f4f1ea',
-  line: '#e8e4dc',
+  paper: '#fffefb',
+  cream: '#f5f2eb',
+  line: '#e6e2d9',
   lineSoft: '#efebe4',
-  green: '#23594d',
-  greenDark: '#173f37',
-  mint: '#e3efe9',
-  amber: '#c0603c',
-  amberSoft: '#f9ece6',
+  green: '#5b7564',
+  greenDark: '#496052',
+  mint: '#e4ece5',
+  amber: '#af705b',
+  amberSoft: '#f5e9e3',
 } as const
 
 export const space = {
@@ -65,18 +65,18 @@ export const radius = {
 export const shadow = {
   rest: Platform.select({
     ios: {
-      shadowColor: '#0f1a17',
-      shadowOpacity: 0.055,
-      shadowRadius: 22,
-      shadowOffset: { width: 0, height: 8 },
+      shadowColor: '#364038',
+      shadowOpacity: 0.045,
+      shadowRadius: 20,
+      shadowOffset: { width: 0, height: 7 },
     },
     default: { elevation: 2 },
   }) as ViewStyle,
   float: Platform.select({
     ios: {
-      shadowColor: '#0f1a17',
-      shadowOpacity: 0.13,
-      shadowRadius: 34,
+      shadowColor: '#364038',
+      shadowOpacity: 0.11,
+      shadowRadius: 30,
       shadowOffset: { width: 0, height: 16 },
     },
     default: { elevation: 12 },
